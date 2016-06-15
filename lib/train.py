@@ -110,7 +110,7 @@ def train_model(model, X, y, training_parameters):
     kwargs = {}
 
     if ('early_stopping' in training_parameters and
-        training_parameters['early_stopping'] == True])
+        training_parameters['early_stopping'] == True):
         early_stopping = EarlyStopping(monitor='val_loss', patience=2)
         kwargs['callbacks'] = [early_stopping]
 

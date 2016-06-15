@@ -12,6 +12,7 @@ from lib.core import ensure_dirs_exist, timeit
 from lib import train
 from lib import evaluation
 
+import boto
 from boto import s3  # or import boto.s3
 from boto.s3.key import Key
 
@@ -21,7 +22,7 @@ LABEL_SET_FID = '1'
 # Stub function to create a message.
 def get_message():
     model_archiecture_string = '{"name": "Sequential", "theano_mode": null, "optimizer": {"lr": 0.009999999776482582, "name": "Adagrad", "epsilon": 1e-06}, "class_mode": "categorical", "loss": "categorical_crossentropy", "layers": [{"input_shape": [840], "dims": [1, 21, 40], "name": "Reshape"}, {"border_mode": "valid", "activation": "linear", "b_regularizer": null, "nb_filter": 8, "W_regularizer": null, "input_shape": [1, 21, 40], "dim_ordering": "th", "init": "glorot_uniform", "name": "Convolution2D", "nb_col": 10, "activity_regularizer": null, "subsample": [1, 1], "nb_row": 7, "W_constraint": null, "b_constraint": null}, {"activation": "relu", "target": 0, "beta": 0.1, "name": "Activation"}, {"border_mode": "valid", "pool_size": [2, 2], "dim_ordering": "th", "strides": [2, 2], "name": "MaxPooling2D"}, {"p": 0.25, "name": "Dropout"}, {"name": "Flatten"}, {"output_dim": 32, "W_regularizer": null, "init": "uniform", "name": "Dense", "b_regularizer": null, "activity_regularizer": null, "activation": "linear", "input_dim": null, "W_constraint": null, "b_constraint": null}, {"activation": "relu", "target": 0, "beta": 0.1, "name": "Activation"}, {"p": 0.25, "name": "Dropout"}, {"output_dim": 5, "W_regularizer": null, "init": "uniform", "name": "Dense", "b_regularizer": null, "activity_regularizer": null, "activation": "linear", "input_dim": null, "W_constraint": null, "b_constraint": null}, {"activation": "softmax", "target": 0, "beta": 0.1, "name": "Activation"}]}'
-    training_parameters = '"early_stopping": true, "batch_size": 32, loss": "categorical_crossentropy", "optimizer": "Adagrad"'
+    training_parameters = '{"early_stopping": true, "batch_size": 32, "loss": "categorical_crossentropy", "optimizer": "Adagrad"}'
     mid = '1'
     xfid = '5'
     yfid = '1'
@@ -46,7 +47,7 @@ def get_label_map_from_dsid(dsid):
 
 # Stub function to label set.
 def get_label_set_from_dsid(dsid):
-    return json.load(open('label_set.txt'))
+    return json.load(open('label_set.json'))
 
 
 # Stub function to test set.
@@ -70,10 +71,10 @@ def get_mel_stub(dsid, data_dir):
     # TODO: use parse.get_feature_s3_prefix here instead of hard-coded string.
     for key in bucket.list('features/magnatagatune'):
         file_name = os.path.join(data_dir, key.name)
-        ensure_dirs_exist([file_name])
+        ensure_dirs_exist([os.path.dirname(file_name)])
         try:
-            key.get_contents_to_filename()
-        except Exception e:
+            key.get_contents_to_filename(file_name)
+        except Exception as e:
             print(e)
             continue
         file_names.append(file_name)
@@ -91,7 +92,9 @@ def download_features(fid, dsid, data_dir):
     elif fid == '5':
         return get_mel_stub(dsid, data_dir)
 
-
+# TODO: time profile this on smaller datasets.
+# TODO: looks like we fill the whole 12GB partition downloading the dataset,
+# deal with this.
 def get_features(xfid, yfid, dspid, data_dir):
     ensure_dirs_exist([data_dir])
     dsid = get_dsid_from_dspid(dspid)
@@ -151,12 +154,17 @@ def upload_results(mid, model, hist, eval_dict, results_dir = '/tmp/results/'):
 # For now, we assume that all data can be loaded into memory,
 # so download_features() loads features into memory, as dictionaries.
 def do_job(message):
-    mid = message['mid']
-    dspid = message['dspid']
-    xfid = message['xfid']
-    yfid = message['yfid'] 
-    architecture_json_string = message['model_archiecture']
-    training_parameters = json.loads(message['training_parameters'])
+    try:
+        mid = message['mid']
+        dspid = message['dspid']
+        xfid = message['xfid']
+        yfid = message['yfid'] 
+        architecture_json_string = message['model_archiecture']
+        training_parameters = json.loads(message['training_parameters'])
+    except Exception as e:
+        # TODO: log error here.
+        print('Could not parse message.')
+        print(e)
 
     # TODO: add support for non-label values.
     if yfid != LABEL_SET_FID:
@@ -164,12 +172,12 @@ def do_job(message):
         return False
 
     data_dir = '/tmp/datasets/'
-
-    dsid = get_dsid_from_dspid(dspid)
     x_feats_train, y_feats_train, x_feats_test, y_feats_test = get_features(xfid,
                                                                             yfid,
+                                                                            dspid,
                                                                             data_dir)
     # Now we are assumming yfid == LABEL_SET_FID
+    dsid = get_dsid_from_dspid(dspid)
     label_map = get_label_map_from_dsid(dsid)
     x_feats_train, y_feats_train = prepare_features_for_model(x_feats_train,
                                                               y_feats_train,

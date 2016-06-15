@@ -1,7 +1,7 @@
 import joblib
 import os
 import keras
-from core_utils import timeit
+from core import timeit
 
 
 @timeit
