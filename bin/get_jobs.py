@@ -8,6 +8,9 @@
 import json
 import joblib
 import os
+
+import numpy as np
+
 from lib.core import ensure_dirs_exist, timeit
 from lib import train
 from lib import evaluation
@@ -21,7 +24,7 @@ LABEL_SET_FID = '1'
 
 # Stub function to create a message.
 def get_message():
-    model_archiecture_string = '{"name": "Sequential", "theano_mode": null, "optimizer": {"lr": 0.009999999776482582, "name": "Adagrad", "epsilon": 1e-06}, "class_mode": "categorical", "loss": "categorical_crossentropy", "layers": [{"input_shape": [840], "dims": [1, 21, 40], "name": "Reshape"}, {"border_mode": "valid", "activation": "linear", "b_regularizer": null, "nb_filter": 8, "W_regularizer": null, "input_shape": [1, 21, 40], "dim_ordering": "th", "init": "glorot_uniform", "name": "Convolution2D", "nb_col": 10, "activity_regularizer": null, "subsample": [1, 1], "nb_row": 7, "W_constraint": null, "b_constraint": null}, {"activation": "relu", "target": 0, "beta": 0.1, "name": "Activation"}, {"border_mode": "valid", "pool_size": [2, 2], "dim_ordering": "th", "strides": [2, 2], "name": "MaxPooling2D"}, {"p": 0.25, "name": "Dropout"}, {"name": "Flatten"}, {"output_dim": 32, "W_regularizer": null, "init": "uniform", "name": "Dense", "b_regularizer": null, "activity_regularizer": null, "activation": "linear", "input_dim": null, "W_constraint": null, "b_constraint": null}, {"activation": "relu", "target": 0, "beta": 0.1, "name": "Activation"}, {"p": 0.25, "name": "Dropout"}, {"output_dim": 5, "W_regularizer": null, "init": "uniform", "name": "Dense", "b_regularizer": null, "activity_regularizer": null, "activation": "linear", "input_dim": null, "W_constraint": null, "b_constraint": null}, {"activation": "softmax", "target": 0, "beta": 0.1, "name": "Activation"}]}'
+    model_archiecture_string = '{"layers": [{"cache_enabled": true, "dims": [1, 21, 40], "name": "Reshape", "input_shape": [840]}, {"b_constraint": null, "name": "Convolution2D", "subsample": [1, 1], "nb_col": 10, "activation": "linear", "W_constraint": null, "dim_ordering": "th", "input_shape": [1, 21, 40], "cache_enabled": true, "init": "glorot_uniform", "nb_filter": 8, "b_regularizer": null, "W_regularizer": null, "nb_row": 7, "activity_regularizer": null, "border_mode": "valid"}, {"cache_enabled": true, "activation": "relu", "name": "Activation"}, {"name": "MaxPooling2D", "strides": [2, 2], "dim_ordering": "th", "pool_size": [2, 2], "cache_enabled": true, "border_mode": "valid"}, {"cache_enabled": true, "name": "Dropout", "p": 0.25}, {"cache_enabled": true, "name": "Flatten"}, {"b_constraint": null, "name": "Dense", "activity_regularizer": null, "W_constraint": null, "cache_enabled": true, "init": "uniform", "activation": "linear", "input_dim": null, "b_regularizer": null, "W_regularizer": null, "output_dim": 32}, {"cache_enabled": true, "activation": "relu", "name": "Activation"}, {"cache_enabled": true, "name": "Dropout", "p": 0.25}, {"b_constraint": null, "name": "Dense", "activity_regularizer": null, "W_constraint": null, "cache_enabled": true, "init": "uniform", "activation": "linear", "input_dim": null, "b_regularizer": null, "W_regularizer": null, "output_dim": 5}, {"cache_enabled": true, "activation": "softmax", "name": "Activation"}], "name": "Sequential"}'
     training_parameters = '{"early_stopping": true, "batch_size": 32, "loss": "categorical_crossentropy", "optimizer": "Adagrad"}'
     mid = '1'
     xfid = '5'
@@ -42,7 +45,10 @@ def get_dsid_from_dspid(dspid):
 
 # Stub function to get label map.
 def get_label_map_from_dsid(dsid):
-    return json.load(open('label_map.txt'))
+    lines = [line.strip() for line in open('label_map.txt').readlines()]
+    label_map = {label: i for i, label in enumerate(lines)}
+    return label_map
+    # return json.load(open('label_map.txt'))
 
 
 # Stub function to label set.
@@ -79,6 +85,31 @@ def get_mel_stub(dsid, data_dir):
             continue
         file_names.append(file_name)
         key_names.append(key.name.split('.')[0])
+    return get_mel_stub_from_local(dsid, data_dir)
+    #return {name: joblib.load(file_name) for name, file_name in zip(key_names,
+    #                                                                file_names)}
+
+
+# Function to load already downloaded features.
+# Very dataset-specific stub.
+@timeit
+def get_mel_stub_from_local(dsid, data_dir):
+    aws_region = 'us-west-1'
+    s3_bucket_name = 'platt-data'
+    s3_connection = boto.s3.connect_to_region(aws_region)
+    bucket = s3_connection.get_bucket(s3_bucket_name)
+    file_names = []
+    key_names = []
+    x = list(os.walk(data_dir))
+    # 3 to 19 is "e" to "0", for Magnatagatune prefixes.
+    for i in range(3,19):
+        parent = x[i][0]
+        for fname in x[i][2]:
+            file_names.append(os.path.join(parent, fname))
+            magna_prefix = parent.split('/')[-1]
+            magna_suffix = fname.split('.')[0]
+            key_name = os.path.join(magna_prefix, magna_suffix)
+            key_names.append(key_name)
     return {name: joblib.load(file_name) for name, file_name in zip(key_names,
                                                                     file_names)}
 
@@ -91,6 +122,15 @@ def download_features(fid, dsid, data_dir):
         return get_label_set_from_dsid(dsid)
     elif fid == '5':
         return get_mel_stub(dsid, data_dir)
+
+
+# Function to load already downloaded features.
+def download_features_from_local(fid, dsid, data_dir):
+    if fid == LABEL_SET_FID:
+        return get_label_set_from_dsid(dsid)
+    elif fid == '5':
+        return get_mel_stub_from_local(dsid, data_dir)
+
 
 # TODO: time profile this on smaller datasets.
 # TODO: looks like we fill the whole 12GB partition downloading the dataset,
@@ -111,12 +151,42 @@ def get_features(xfid, yfid, dspid, data_dir):
 
     return x_feats_train, y_feats_train, x_feats_test, y_feats_test
 
+
+# Function to load already downloaded features.
+def get_features_from_local(xfid, yfid, dspid, data_dir):
+    ensure_dirs_exist([data_dir])
+    dsid = get_dsid_from_dspid(dspid)
+    x_feats = download_features_from_local(xfid, dsid, data_dir)
+    y_feats = download_features_from_local(yfid, dsid, data_dir)
+    # Convert the dictionaries to parallel lists, using only keys that they have
+    # in common.
+    common_keys = list(set(x_feats.keys()) & set(y_feats.keys()))
+    test_set = get_test_set_from_dspid(dspid)
+    x_feats_train = [x_feats[key] for key in common_keys if key not in test_set]
+    y_feats_train = [y_feats[key] for key in common_keys if key not in test_set]
+    x_feats_test = [x_feats[key] for key in common_keys if key in test_set]
+    y_feats_test = [y_feats[key] for key in common_keys if key in test_set]
+
+    return x_feats_train, y_feats_train, x_feats_test, y_feats_test
+
+
+# Take ((feature, metadata), targets) pairs and split them into
+# (feature, target) pairs.
+# (We also remove the feature metadata)
+# Then turn label targets in 0/1 one vectors.
+# Then split feature segments into separate examples.
 def prepare_features_for_model(x_feats, y_feats, label_map):
-    y_feats = train.string_labels_to_binary_vectors(y_feats,
-                                                          label_map)
-    x_feats, y_feats = train.expand_features_and_labels(x_feats,
-                                                        y_feats)
-    return x_feats, y_feats
+    x_feats_new = []
+    y_feats_new = []
+    for x, y in zip(x_feats, y_feats):
+        for label in y:
+            x_feats_new.append(x[0])
+            y_feats_new.append(label)
+    y_feats_new = train.string_labels_to_binary_vectors(y_feats_new,
+                                                        label_map)
+    x_feats_new, y_feats_new = train.expand_features_and_labels(x_feats_new,
+                                                                y_feats_new)
+    return np.vstack(x_feats_new), np.vstack(y_feats_new)
 
 
 def upload_results(mid, model, hist, eval_dict, results_dir = '/tmp/results/'):
@@ -171,7 +241,8 @@ def do_job(message):
         print('No support yet for target features which are not string labels.')
         return False
 
-    data_dir = '/tmp/datasets/'
+    # data_dir = '/tmp/datasets/'
+    data_dir = '/dev/tmp/datasets'
     x_feats_train, y_feats_train, x_feats_test, y_feats_test = get_features(xfid,
                                                                             yfid,
                                                                             dspid,
@@ -179,12 +250,12 @@ def do_job(message):
     # Now we are assumming yfid == LABEL_SET_FID
     dsid = get_dsid_from_dspid(dspid)
     label_map = get_label_map_from_dsid(dsid)
-    x_feats_train, y_feats_train = prepare_features_for_model(x_feats_train,
-                                                              y_feats_train,
-                                                              label_map)
-    x_feats_test, y_feats_test = prepare_features_for_model(x_feats_test,
-                                                            y_feats_test,
-                                                            label_map)
+    X, y = prepare_features_for_model(x_feats_train,
+                                      y_feats_train,
+                                      label_map)
+    X_test, y_test = prepare_features_for_model(x_feats_test,
+                                                y_feats_test,
+                                                label_map)
 
     model = train.load_model_from_architecture_string(architecture_json_string)
     train.compile_model(model, training_parameters)
@@ -194,8 +265,8 @@ def do_job(message):
     # training_parameters["validation_split"] = 0.1
     hist = train.train_model(model, X, y, training_parameters)
     eval_dict = evaluation.get_evaluation_results_dictionary(model,
-                                                             x_feats_test,
-                                                             y_feats_test)
+                                                             X_test,
+                                                             y_test)
 
     # Upload model architecture, model parameters, hist.history, eval results.
     upload_results(mid, model, hist, eval_dict)

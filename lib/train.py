@@ -16,10 +16,10 @@ from core import timeit
 
 def string_labels_to_binary_vectors(y_labels, label_map):
     # Convert the string labels to numberical values.
-    y = [labelmap[label] for label in y_labels]
+    y = [label_map[label] for label in y_labels]
     # Now we need to convert labels from numerical value to 0/1 vectors
     # http://stackoverflow.com/questions/31997366/python-keras-shape-mismatch-error
-    y = [np_utils.to_categorical(label) for label_number in y]
+    y = np_utils.to_categorical(y)
     return y
 
 
